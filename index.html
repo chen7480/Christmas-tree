@@ -13,53 +13,28 @@
     overflow: hidden;
     background: #000000;
     font-family: 'Times New Roman', Times, serif;
+    overscroll-behavior: none;
   }
-  canvas { 
-    display: block; 
+  canvas {
+    display: block;
     width: 100%;
     height: 100%;
-  }
-  .text-container {
-    position: fixed;
-    top: 12%;
-    left: 10%;
-    pointer-events: none;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-  .title-line1 {
-    color: #fce4ec;
-    font-size: clamp(20px, 4.5vw, 32px);
-    font-style: italic;
-    letter-spacing: 0.08em;
-    text-shadow: 0 0 15px rgba(255, 105, 180, 0.6);
-  }
-  .title-line2 {
-    color: #fce4ec;
-    font-size: clamp(24px, 5.5vw, 40px);
-    font-style: italic;
-    letter-spacing: 0.1em;
-    text-shadow: 0 0 20px rgba(255, 105, 180, 0.8);
-    padding-left: 20px;
   }
 </style>
 </head>
 <body>
-  <div class="text-container">
-    <div class="title-line1">Merry Christmas</div>
-    <div class="title-line2">Xuan</div>
-  </div>
   <canvas id="c"></canvas>
-
 <script>
 (() => {
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
   let W, H, DPR;
+  let gradCache = {};
+  let starGradCache = null;
 
   function resize() {
+    gradCache = {};
+    starGradCache = null;
     DPR = Math.min(window.devicePixelRatio || 1, 2);
     W = window.innerWidth;
     H = window.innerHeight;
@@ -72,22 +47,16 @@
   }
   window.addEventListener('resize', resize);
 
-  let rotX = 0.15; 
-  let rotY = 0;
-  let targetRotX = 0.15;
-  let targetRotY = 0;
-  let zoom = 1;
-  let targetZoom = 1;
-  
+  // 视角控制
+  let angleY = 0;
+  const speedY = 0.005;
+  let scale = 1;
+  let targetScale = 1;
   let dragging = false;
-  let lastX = 0, lastY = 0;
-  let pinchDist = null;
+  let lastX = 0;
 
-  const TREE_HEIGHT = 1.6;
-  const TRUNK_HEIGHT = 0.35; 
-  const TREE_RADIUS = 0.85; // 加宽树底
-  const TREE_COUNT = 6500; // 粒子翻倍，增加浓密感
-  const GROUND_COUNT = 7000; 
+  const TREE_COUNT = 2500;
+  const GROUND_COUNT = 3000;
   const SNOW_COUNT = 150;
 
   let treeParticles = [];
@@ -98,77 +67,56 @@
     treeParticles = [];
     groundParticles = [];
     snowParticles = [];
+    const treeBaseY = H * 0.8;
+    const treeHeight = H * 0.55;
+    const maxRadius = W * 0.4;
 
-    // 1. 树身 (丰满圆锥)
+    // 树身粒子
     for (let i = 0; i < TREE_COUNT; i++) {
-      const t = Math.pow(Math.random(), 0.75); // 底部更密
-      const y = -TREE_HEIGHT / 2 + TRUNK_HEIGHT + t * TREE_HEIGHT;
-      
-      // 用三角函数让边缘有弧度
-      const maxR = TREE_RADIUS * Math.sin((1 - t) * Math.PI / 2); 
-      
-      const spiralAngle = t * Math.PI * 30; 
-      const angle = spiralAngle + (Math.random() - 0.5) * 2.5;
-      const r = maxR * (0.5 + Math.random() * 0.5); // 内部也填满
-      
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
-
-      // 极致光感配色
+      const t = Math.pow(Math.random(), 0.6);
+      const y = treeBaseY - t * treeHeight;
+      let radius = 0;
+      if (t > 0.15) {
+        radius = maxRadius * (1 - Math.pow(t, 1.2));
+      }
+      const r = Math.random() * radius;
+      const a = Math.random() * Math.PI * 2;
       let color;
       const rand = Math.random();
-      if (rand > 0.92) color = [255, 255, 255]; // 刺眼白光
-      else if (rand > 0.7) color = [255, 192, 203]; // 樱花粉
-      else if (rand > 0.4) color = [255, 105, 180]; // 亮粉
-      else color = [219, 112, 147]; // 暗粉
-
+      if (rand > 0.92) color = '#ffffff';
+      else if (rand > 0.7) color = '#ffb6c1';
+      else if (rand > 0.4) color = '#ff69b4';
+      else color = '#db7093';
       treeParticles.push({
-        x, y, z,
+        localY: y,
+        localX: Math.cos(a) * r,
+        localZ: Math.sin(a) * r,
         size: 0.6 + Math.random() * 1.5,
-        color,
+        color: color,
         alpha: 0.4 + Math.random() * 0.6,
         twinkleSpeed: 1 + Math.random() * 3,
         phase: Math.random() * Math.PI * 2
       });
     }
 
-    // 2. 树干
-    for (let i = 0; i < 800; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const r = Math.random() * 0.15; 
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
-      const y = -TREE_HEIGHT / 2 + Math.random() * TRUNK_HEIGHT; 
-
-      treeParticles.push({
-        x, y, z,
-        size: 0.5 + Math.random() * 0.8,
-        color: [160, 80, 130], // 暗紫粉树干
-        alpha: 0.4 + Math.random() * 0.4,
-        twinkleSpeed: 0.5 + Math.random(),
-        phase: Math.random() * Math.PI * 2
-      });
-    }
-
-    // 3. 底部星云
+    // 底部星云
     for (let i = 0; i < GROUND_COUNT; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const r = Math.random() * 4.0; // 铺满全屏
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
-      const y = -TREE_HEIGHT / 2 - 0.02;
-
+      const r = Math.random() * maxRadius * 2.5;
+      const a = Math.random() * Math.PI * 2;
+      let alpha = (1 - r / (maxRadius * 2.5)) * 0.6;
       groundParticles.push({
-        x, y, z,
-        size: 0.4 + Math.random() * 1.5,
-        color: [180 + Math.random()*75, 80 + Math.random()*80, 130 + Math.random()*80],
-        alpha: (1 - r/4.0) * 0.6, // 越靠外越暗
+        localY: treeBaseY + Math.random() * 30 - 15,
+        localX: Math.cos(a) * r,
+        localZ: Math.sin(a) * r,
+        size: 0.5 + Math.random() * 1.5,
+        color: Math.random() > 0.5 ? '#ff69b4' : '#db7093',
+        alpha: alpha,
         twinkleSpeed: 0.5 + Math.random(),
         phase: Math.random() * Math.PI * 2
       });
     }
 
-    // 4. 雪花
+    // 雪花
     for (let i = 0; i < SNOW_COUNT; i++) {
       snowParticles.push({
         x: Math.random() * W,
@@ -180,162 +128,184 @@
     }
   }
 
-  function pointerDown(e) {
-    dragging = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
-  }
-  function pointerMove(e) {
-    if (!dragging) return;
-    const dx = e.clientX - lastX;
-    const dy = e.clientY - lastY;
-    lastX = e.clientX;
-    lastY = e.clientY;
-    targetRotY += dx * 0.01;
-    targetRotX += dy * 0.01;
-    targetRotX = Math.max(-0.05, Math.min(1.45, targetRotX)); 
-  }
-  function pointerUp() { dragging = false; }
+  // 手势与拖拽控制
+  let pointerCache = new Map();
+  let lastPinchDist = 0;
 
-  canvas.addEventListener('pointerdown', pointerDown);
-  window.addEventListener('pointermove', pointerMove);
-  window.addEventListener('pointerup', pointerUp);
-  window.addEventListener('pointercancel', pointerUp);
+  canvas.addEventListener('pointerdown', e => {
+    pointerCache.set(e.pointerId, {x: e.clientX, y: e.clientY});
+    if (pointerCache.size === 1) {
+      dragging = true;
+      lastX = e.clientX;
+    }
+  });
 
+  canvas.addEventListener('pointermove', e => {
+    if (!pointerCache.has(e.pointerId)) return;
+    pointerCache.set(e.pointerId, {x: e.clientX, y: e.clientY});
+    if (pointerCache.size === 2) {
+      dragging = false;
+      const pts = Array.from(pointerCache.values());
+      const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (lastPinchDist > 0) {
+        targetScale *= d / lastPinchDist;
+        targetScale = Math.max(0.5, Math.min(2.5, targetScale));
+      }
+      lastPinchDist = d;
+    } else if (pointerCache.size === 1 && dragging) {
+      const dx = e.clientX - lastX;
+      lastX = e.clientX;
+      angleY += dx * 0.015;
+    }
+  });
+
+  function removePointer(e) {
+    pointerCache.delete(e.pointerId);
+    if (pointerCache.size < 2) lastPinchDist = 0;
+    if (pointerCache.size === 0) dragging = false;
+  }
+  window.addEventListener('pointerup', removePointer);
+  window.addEventListener('pointercancel', removePointer);
+
+  // 滚轮缩放
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    targetZoom *= e.deltaY > 0 ? 0.9 : 1.1;
-    targetZoom = Math.max(0.5, Math.min(2.5, targetZoom));
+    targetScale *= e.deltaY > 0 ? 0.9 : 1.1;
+    targetScale = Math.max(0.5, Math.min(2.5, targetScale));
   }, { passive: false });
 
-  canvas.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) {
-      dragging = false;
-      pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-    }
-  }, { passive: true });
-  canvas.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 2 && pinchDist) {
-      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      targetZoom *= d / pinchDist;
-      targetZoom = Math.max(0.5, Math.min(2.5, targetZoom));
-      pinchDist = d;
-    }
-  }, { passive: true });
-  canvas.addEventListener('touchend', () => { pinchDist = null; }, { passive: true });
-
-  function project(x, y, z, cosY, sinY, cosX, sinX) {
-    let x1 = x * cosY - z * sinY;
-    let z1 = x * sinY + z * cosY;
-    let y2 = y * cosX - z1 * sinX;
-    let z2 = y * sinX + z1 * cosX;
-
-    const baseScale = Math.min(W, H) * 0.45 * zoom;
-    // 透视系数：越远越小，增强立体感
-    const persp = 1 - z2 * 0.4; 
-    
-    return {
-      sx: W / 2 + x1 * baseScale * persp,
-      sy: H * 0.55 - y2 * baseScale * persp, 
-      depth: z2,
-      scale: persp
-    };
-  }
-
   let time = 0;
-
   function frame(ts) {
-    time = ts * 0.001;
-    
-    if (!dragging) targetRotY += 0.003;
-    rotY += (targetRotY - rotY) * 0.1;
-    rotX += (targetRotX - rotX) * 0.1;
-    zoom += (targetZoom - zoom) * 0.1;
+    time = (ts * 0.001) % (Math.PI * 100);
+    if (!dragging) angleY += speedY;
+    scale += (targetScale - scale) * 0.1;
 
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, W, H);
 
-    const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
-    const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+    const cosY = Math.cos(angleY);
+    const sinY = Math.sin(angleY);
+    const centerY = H * 0.55;
 
-    // 画底部星云
+    // 绘制底部星云
     for (const p of groundParticles) {
-      const pr = project(p.x, p.y, p.z, cosY, sinY, cosX, sinX);
+      const x = p.localX * cosY - p.localZ * sinY;
+      const z = p.localX * sinY + p.localZ * cosY;
+      const persp = Math.max(0.3, (z + 1000) / 1000);
+      const finalX = W / 2 + x * scale;
+      const finalY = centerY + (p.localY - centerY) * scale;
       const twinkle = 0.5 + 0.5 * Math.sin(time * p.twinkleSpeed + p.phase);
-      ctx.fillStyle = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},${p.alpha * twinkle})`;
+
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.alpha * twinkle * persp;
       ctx.beginPath();
-      ctx.arc(pr.sx, pr.sy, p.size * pr.scale, 0, Math.PI * 2);
+      ctx.arc(finalX, finalY, p.size * scale * persp, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // 画树身：深度排序，让前面的挡住后面的
-    const sortedTree = treeParticles.map(p => {
-      return { p, pr: project(p.x, p.y, p.z, cosY, sinY, cosX, sinX) };
-    }).sort((a, b) => a.pr.depth - b.pr.depth);
-
-    for (const { p, pr } of sortedTree) {
+    // 绘制树身粒子
+    for (const p of treeParticles) {
+      const x = p.localX * cosY - p.localZ * sinY;
+      const z = p.localX * sinY + p.localZ * cosY;
+      const persp = Math.max(0.3, (z + 1000) / 1000);
+      const finalX = W / 2 + x * scale;
+      const finalY = centerY + (p.localY - centerY) * scale;
       const twinkle = 0.6 + 0.4 * Math.sin(time * p.twinkleSpeed + p.phase);
-      const alpha = p.alpha * twinkle * pr.scale;
-      const rad = p.size * pr.scale;
+      const alpha = Math.max(0, p.alpha * twinkle * persp);
 
-      // 给白色和亮粉色加光晕，营造高级感
-      if (p.color[0] > 250 && p.color[1] > 180) {
-        const grad = ctx.createRadialGradient(pr.sx, pr.sy, 0, pr.sx, pr.sy, rad * 4);
-        grad.addColorStop(0, `rgba(${p.color[0]},${p.color[1]},${p.color[2]},${alpha})`);
-        grad.addColorStop(1, `rgba(${p.color[0]},${p.color[1]},${p.color[2]},0)`);
+      if ((p.color === '#ffffff' || p.color === '#ffb6c1')) {
+        const rad = p.size * 3 * scale * persp;
+        const key = p.color + "|" + rad.toFixed(1);
+        let grad = gradCache[key];
+        if (!grad) {
+          grad = ctx.createRadialGradient(0,0,0,0,0,rad);
+          const rgb = p.color === '#ffffff' ? '255,255,255' : '255,182,193';
+          grad.addColorStop(0, `rgba(${rgb},1)`);
+          grad.addColorStop(1, `rgba(${rgb},0)`);
+          gradCache[key] = grad;
+        }
+        ctx.save();
+        ctx.translate(finalX, finalY);
         ctx.fillStyle = grad;
+        ctx.globalAlpha = alpha;
         ctx.beginPath();
-        ctx.arc(pr.sx, pr.sy, rad * 4, 0, Math.PI * 2);
+        ctx.arc(0, 0, rad, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
       }
 
-      ctx.fillStyle = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},${alpha})`;
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = alpha;
       ctx.beginPath();
-      ctx.arc(pr.sx, pr.sy, Math.max(0.5, rad), 0, Math.PI * 2);
+      ctx.arc(finalX, finalY, p.size * scale * persp, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // 画树顶星星
+    // 树顶星星【修复光晕坐标偏移】
     {
-      const pr = project(0, TREE_HEIGHT / 2 + TRUNK_HEIGHT + 0.1, 0, cosY, sinY, cosX, sinX);
+      const starY = H * 0.8 - H * 0.55 - (H * 0.04);
+      const finalY = centerY + (starY - centerY) * scale;
+      const finalX = W / 2;
       const pulse = 0.8 + 0.2 * Math.sin(time * 3);
-      const size = 8 * pr.scale * pulse;
-      
-      const grad = ctx.createRadialGradient(pr.sx, pr.sy, 0, pr.sx, pr.sy, size * 4);
-      grad.addColorStop(0, 'rgba(255,255,255,1)');
-      grad.addColorStop(0.2, 'rgba(255,182,193,0.8)');
-      grad.addColorStop(1, 'rgba(255,105,180,0)');
-      
-      ctx.fillStyle = grad;
+      const size = 6 * pulse * scale;
+      const starRadius = size * 4;
+
+      if(!starGradCache || starGradCache.radius !== starRadius){
+        starGradCache = {
+          radius: starRadius,
+          grad: ctx.createRadialGradient(0,0,0,0,0, starRadius)
+        };
+        starGradCache.grad.addColorStop(0, 'rgba(255,255,255,1)');
+        starGradCache.grad.addColorStop(0.2, 'rgba(255,182,193,0.6)');
+        starGradCache.grad.addColorStop(1, 'rgba(255,105,180,0)');
+      }
+
+      ctx.save();
+      ctx.translate(finalX, finalY);
+      ctx.fillStyle = starGradCache.grad;
+      ctx.globalAlpha = 1;
       ctx.beginPath();
-      ctx.arc(pr.sx, pr.sy, size * 4, 0, Math.PI * 2);
+      ctx.arc(0, 0, starRadius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
 
       ctx.strokeStyle = `rgba(255,255,255,${pulse})`;
-      ctx.lineWidth = 2 * pr.scale;
+      ctx.lineWidth = 1.5 * scale;
       ctx.beginPath();
-      ctx.moveTo(pr.sx - size * 3, pr.sy);
-      ctx.lineTo(pr.sx + size * 3, pr.sy);
-      ctx.moveTo(pr.sx, pr.sy - size * 3);
-      ctx.lineTo(pr.sx, pr.sy + size * 3);
+      ctx.moveTo(finalX - size * 2.5, finalY);
+      ctx.lineTo(finalX + size * 2.5, finalY);
+      ctx.moveTo(finalX, finalY - size * 2.5);
+      ctx.lineTo(finalX, finalY + size * 2.5);
       ctx.stroke();
     }
 
-    // 画飘雪
+    // 雪花
     ctx.fillStyle = '#ffffff';
     for (const s of snowParticles) {
-      s.y += s.speed; 
+      s.y += s.speed * scale;
       s.swing += 0.02;
-      if (s.y > H) { 
-        s.y = -10; 
-        s.x = Math.random() * W; 
+      if (s.y > H) {
+        s.y = -10 * scale;
+        s.x = Math.random() * W;
       }
       ctx.globalAlpha = s.size * 0.3;
       ctx.beginPath();
-      ctx.arc(s.x + Math.sin(s.swing) * 20, s.y, s.size, 0, Math.PI * 2);
+      ctx.arc(s.x + Math.sin(s.swing) * 20 * scale, s.y, s.size * scale, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    // 绘制文字
     ctx.globalAlpha = 1;
+    ctx.font = `italic ${Math.max(20, 32 * scale)}px 'Times New Roman', serif`;
+    ctx.fillStyle = "#fce4ec";
+    ctx.shadowColor = "rgba(255,105,180,0.6)";
+    ctx.shadowBlur = 15 * scale;
+    ctx.fillText("Merry Christmas", W * 0.1, H * 0.12);
+
+    ctx.font = `italic ${Math.max(24, 40 * scale)}px 'Times New Roman', serif`;
+    ctx.shadowBlur = 20 * scale;
+    ctx.fillText("Xuan", W * 0.1 + 20 * scale, H * 0.12 + 40 * scale);
+    ctx.shadowBlur = 0;
 
     requestAnimationFrame(frame);
   }
