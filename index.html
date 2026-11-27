@@ -72,24 +72,18 @@
   }
   window.addEventListener('resize', resize);
 
-  // 旋转与缩放参数
-  let rotX = 0.15; // 初始俯仰角
-  let rotY = 0;
-  let targetRotX = 0.15;
-  let targetRotY = 0;
-  let zoom = 1;
-  let targetZoom = 1;
-  
-  let dragging = false;
-  let lastX = 0, lastY = 0;
-  let pinchDist = null;
+  // 纯 2D 交互参数
+  let angleY = 0;
+  let speedY = 0.008;
+  let scale = 1;
+  let targetScale = 1;
 
-  const TREE_HEIGHT = 1.4;
-  const TRUNK_HEIGHT = 0.3; 
-  const TREE_RADIUS = 0.7;
-  const TREE_COUNT = 4000;
-  const GROUND_COUNT = 5000; 
-  const SNOW_COUNT = 200;
+  let dragging = false;
+  let lastX = 0;
+
+  const TREE_COUNT = 1500;
+  const GROUND_COUNT = 3000;
+  const SNOW_COUNT = 150;
 
   let treeParticles = [];
   let groundParticles = [];
@@ -100,102 +94,94 @@
     groundParticles = [];
     snowParticles = [];
 
-    // 1. 树身 (正立圆锥)
-    for (let i = 0; i < TREE_COUNT; i++) {
-      const t = Math.pow(Math.random(), 0.85); // t=0底部，t=1顶部
-      const y = -TREE_HEIGHT / 2 + TRUNK_HEIGHT + t * TREE_HEIGHT;
-      const maxR = TREE_RADIUS * (1 - Math.pow(t, 1.2)); 
-      
-      // 螺旋加随机，形成蓬松感
-      const angle = t * Math.PI * 25 + (Math.random() - 0.5) * 2;
-      const r = maxR * Math.random();
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
+    const treeBaseY = H * 0.8; // 树根在屏幕的 80% 位置
+    const treeHeight = H * 0.5;
+    const maxRadius = W * 0.35;
 
+    // 1. 生成 2D 树身
+    for (let i = 0; i < TREE_COUNT; i++) {
+      const t = Math.pow(Math.random(), 0.7); // 底部密，顶部疏
+      const y = treeBaseY - t * treeHeight;
+      
+      // 树干底座 20% 是树干，不加宽
+      let radius = 0;
+      if (t > 0.15) {
+         radius = maxRadius * (1 - t);
+      }
+
+      // 给粒子在半径内一个随机位置
+      const r = Math.random() * radius;
+      const a = Math.random() * Math.PI * 2;
+
+      // 高级冷调粉色
       let color;
       const rand = Math.random();
-      if (rand > 0.9) color = [255, 255, 255]; 
-      else if (rand > 0.6) color = [255, 182, 193]; 
-      else if (rand > 0.3) color = [255, 105, 180]; 
-      else color = [219, 112, 147]; 
+      if (rand > 0.95) color = '#ffffff'; 
+      else if (rand > 0.7) color = '#ffb6c1'; 
+      else if (rand > 0.4) color = '#ff69b4'; 
+      else color = '#db7093'; 
 
       treeParticles.push({
-        x, y, z,
-        size: 0.8 + Math.random() * 1.2,
-        color,
-        alpha: 0.5 + Math.random() * 0.5,
-        twinkleSpeed: 1 + Math.random() * 2,
-        phase: Math.random() * Math.PI * 2
-      });
-    }
-
-    // 2. 树干
-    for (let i = 0; i < 500; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const r = Math.random() * 0.1; 
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
-      const y = -TREE_HEIGHT / 2 + Math.random() * TRUNK_HEIGHT; 
-
-      treeParticles.push({
-        x, y, z,
-        size: 0.6 + Math.random() * 0.8,
-        color: [180, 100, 150], 
-        alpha: 0.3 + Math.random() * 0.4,
-        twinkleSpeed: 0.5 + Math.random(),
-        phase: Math.random() * Math.PI * 2
-      });
-    }
-
-    // 3. 底部星云 (铺满底部)
-    for (let i = 0; i < GROUND_COUNT; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const r = Math.random() * 3.5; 
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
-      const y = -TREE_HEIGHT / 2 - 0.02; // 平铺在树底
-
-      groundParticles.push({
-        x, y, z,
+        localY: y,
+        localX: Math.cos(a) * r,
+        localZ: Math.sin(a) * r, // 用 Z 来做 2D 的缩放和透明度模拟
         size: 0.5 + Math.random() * 1.5,
-        color: [200 + Math.random()*55, 100 + Math.random()*80, 150 + Math.random()*80],
-        alpha: 0.1 + Math.random() * 0.4,
+        color: color,
+        alpha: 0.4 + Math.random() * 0.6,
+        twinkleSpeed: 1 + Math.random() * 3,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+
+    // 2. 底部星云
+    for (let i = 0; i < GROUND_COUNT; i++) {
+      const r = Math.random() * maxRadius * 2.5; // 铺满全屏
+      const a = Math.random() * Math.PI * 2;
+      
+      // 越靠外越淡，保证中间树根明显
+      let alpha = (1 - r / (maxRadius * 2.5)) * 0.6;
+      
+      groundParticles.push({
+        localY: treeBaseY + Math.random() * 20 - 10, // 在树根附近散布
+        localX: Math.cos(a) * r,
+        localZ: Math.sin(a) * r,
+        size: 0.5 + Math.random() * 1.5,
+        color: Math.random() > 0.5 ? '#ff69b4' : '#db7093',
+        alpha: alpha,
         twinkleSpeed: 0.5 + Math.random(),
         phase: Math.random() * Math.PI * 2
       });
     }
 
-    // 4. 雪花 (独立屏幕坐标)
+    // 3. 雪花
     for (let i = 0; i < SNOW_COUNT; i++) {
       snowParticles.push({
         x: Math.random() * W,
         y: Math.random() * H,
         size: 0.8 + Math.random() * 1.5,
-        speed: 0.8 + Math.random() * 1.5, // 下落速度
+        speed: 0.5 + Math.random() * 1.5, 
         swing: Math.random() * Math.PI * 2
       });
     }
   }
 
-  // 交互控制
   function pointerDown(e) {
     dragging = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
+    lastX = e.clientX || e.touches[0].clientX;
   }
-  
+
   function pointerMove(e) {
     if (!dragging) return;
-    const dx = e.clientX - lastX;
-    const dy = e.clientY - lastY;
-    lastX = e.clientX;
-    lastY = e.clientY;
-    targetRotY += dx * 0.01;
-    targetRotX += dy * 0.01;
-    // 【限制视角】最高平视 (0)，最低俯视 (1.45)，绝对看不到地底下
-    targetRotX = Math.max(-0.05, Math.min(1.45, targetRotX)); 
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    if (clientX === undefined) return;
+    
+    const dx = clientX - lastX;
+    lastX = clientX;
+    
+    // 只需修改旋转角度
+    angleY += dx * 0.02; 
   }
-  
+
   function pointerUp() { dragging = false; }
 
   canvas.addEventListener('pointerdown', pointerDown);
@@ -203,128 +189,144 @@
   window.addEventListener('pointerup', pointerUp);
   window.addEventListener('pointercancel', pointerUp);
 
+  // 滚轮缩放
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    targetZoom *= e.deltaY > 0 ? 0.9 : 1.1;
-    targetZoom = Math.max(0.5, Math.min(2.5, targetZoom));
+    targetScale *= e.deltaY > 0 ? 0.9 : 1.1;
+    targetScale = Math.max(0.5, Math.min(2.5, targetScale));
   }, { passive: false });
 
+  // 双指缩放
+  let pinchDist = null;
   canvas.addEventListener('touchstart', (e) => {
     if (e.touches.length === 2) {
       dragging = false;
       pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    } else if (e.touches.length === 1) {
+      dragging = true;
+      lastX = e.touches[0].clientX;
     }
   }, { passive: true });
   
   canvas.addEventListener('touchmove', (e) => {
     if (e.touches.length === 2 && pinchDist) {
       const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      targetZoom *= d / pinchDist;
-      targetZoom = Math.max(0.5, Math.min(2.5, targetZoom));
+      targetScale *= d / pinchDist;
+      targetScale = Math.max(0.5, Math.min(2.5, targetScale));
       pinchDist = d;
+    } else if (e.touches.length === 1 && dragging) {
+      const dx = e.touches[0].clientX - lastX;
+      lastX = e.touches[0].clientX;
+      angleY += dx * 0.02;
     }
   }, { passive: true });
   
-  canvas.addEventListener('touchend', () => { pinchDist = null; }, { passive: true });
-
-  // 2D 屏幕投影计算 (极其稳定，不涉及复杂透视)
-  function project(x, y, z, cosY, sinY, cosX, sinX) {
-    // 绕 Y 轴
-    let x1 = x * cosY - z * sinY;
-    let z1 = x * sinY + z * cosY;
-    // 绕 X 轴
-    let y2 = y * cosX - z1 * sinX;
-
-    const baseScale = Math.min(W, H) * 0.5 * zoom;
-    
-    return {
-      sx: W / 2 + x1 * baseScale,
-      sy: H * 0.55 - y2 * baseScale, 
-      // 用 z1 来做简单的近大远小闪烁
-      depth: z1 
-    };
-  }
+  canvas.addEventListener('touchend', () => { 
+    dragging = false;
+    pinchDist = null; 
+  }, { passive: true });
 
   let time = 0;
 
   function frame(ts) {
     time = ts * 0.001;
     
-    // 平滑插值
-    if (!dragging) targetRotY += 0.002; // 自动缓慢旋转
-    rotY += (targetRotY - rotY) * 0.1;
-    rotX += (targetRotX - rotX) * 0.1;
-    zoom += (targetZoom - zoom) * 0.1;
+    // 自动缓慢旋转
+    if (!dragging) angleY += speedY;
+    // 缩放平滑过渡
+    scale += (targetScale - scale) * 0.1;
 
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, W, H);
 
-    const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
-    const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+    const cosY = Math.cos(angleY);
+    const sinY = Math.sin(angleY);
+    const centerY = H * 0.55;
 
     // --- 画底部星云 ---
     for (const p of groundParticles) {
-      const pr = project(p.x, p.y, p.z, cosY, sinY, cosX, sinX);
+      // 2D 旋转投影
+      const x = p.localX * cosY - p.localZ * sinY;
+      const z = p.localX * sinY + p.localZ * cosY;
+      
+      // 近大远小
+      const persp = (z + 2000) / 2000; 
+      const finalX = W / 2 + x * scale;
+      const finalY = centerY + (p.localY - centerY) * scale;
+
       const twinkle = 0.5 + 0.5 * Math.sin(time * p.twinkleSpeed + p.phase);
-      ctx.fillStyle = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},${p.alpha * twinkle})`;
+      
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.alpha * twinkle;
       ctx.beginPath();
-      ctx.arc(pr.sx, pr.sy, p.size, 0, Math.PI * 2);
+      ctx.arc(finalX, finalY, p.size * scale, 0, Math.PI * 2);
       ctx.fill();
     }
 
     // --- 画树身 ---
     for (const p of treeParticles) {
-      const pr = project(p.x, p.y, p.z, cosY, sinY, cosX, sinX);
-      const twinkle = 0.6 + 0.4 * Math.sin(time * p.twinkleSpeed + p.phase);
-      const alpha = p.alpha * twinkle;
+      const x = p.localX * cosY - p.localZ * sinY;
+      const z = p.localX * sinY + p.localZ * cosY;
+      
+      const persp = (z + 2000) / 2000; 
+      const finalX = W / 2 + x * scale;
+      const finalY = centerY + (p.localY - centerY) * scale;
 
-      // 高光粒子加光晕
-      if (p.color[0] === 255 && p.color[1] === 255) {
-        const grad = ctx.createRadialGradient(pr.sx, pr.sy, 0, pr.sx, pr.sy, p.size * 3);
+      const twinkle = 0.6 + 0.4 * Math.sin(time * p.twinkleSpeed + p.phase);
+      const alpha = p.alpha * twinkle * persp;
+
+      // 高光粒子光晕
+      if (p.color === '#ffffff') {
+        const grad = ctx.createRadialGradient(finalX, finalY, 0, finalX, finalY, p.size * 3 * scale);
         grad.addColorStop(0, `rgba(255,255,255,${alpha})`);
         grad.addColorStop(1, `rgba(255,255,255,0)`);
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(pr.sx, pr.sy, p.size * 3, 0, Math.PI * 2);
+        ctx.arc(finalX, finalY, p.size * 3 * scale, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      ctx.fillStyle = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},${alpha})`;
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = alpha;
       ctx.beginPath();
-      ctx.arc(pr.sx, pr.sy, p.size, 0, Math.PI * 2);
+      ctx.arc(finalX, finalY, p.size * scale, 0, Math.PI * 2);
       ctx.fill();
     }
 
     // --- 画树顶星星 ---
     {
-      const pr = project(0, TREE_HEIGHT / 2 + TRUNK_HEIGHT + 0.1, 0, cosY, sinY, cosX, sinX);
-      const pulse = 0.8 + 0.2 * Math.sin(time * 3);
-      const size = 6 * pulse;
+      const starY = H * 0.8 - H * 0.5 - (H * 0.05); // 估算顶部位置
+      const finalY = centerY + (starY - centerY) * scale;
+      const finalX = W / 2;
       
-      const grad = ctx.createRadialGradient(pr.sx, pr.sy, 0, pr.sx, pr.sy, size * 4);
+      const pulse = 0.8 + 0.2 * Math.sin(time * 3);
+      const size = 6 * pulse * scale;
+      
+      const grad = ctx.createRadialGradient(finalX, finalY, 0, finalX, finalY, size * 4);
       grad.addColorStop(0, 'rgba(255,255,255,1)');
       grad.addColorStop(0.2, 'rgba(255,182,193,0.6)');
       grad.addColorStop(1, 'rgba(255,105,180,0)');
       
       ctx.fillStyle = grad;
+      ctx.globalAlpha = 1;
       ctx.beginPath();
-      ctx.arc(pr.sx, pr.sy, size * 4, 0, Math.PI * 2);
+      ctx.arc(finalX, finalY, size * 4, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.strokeStyle = `rgba(255,255,255,${pulse})`;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.5 * scale;
       ctx.beginPath();
-      ctx.moveTo(pr.sx - size * 2.5, pr.sy);
-      ctx.lineTo(pr.sx + size * 2.5, pr.sy);
-      ctx.moveTo(pr.sx, pr.sy - size * 2.5);
-      ctx.lineTo(pr.sx, pr.sy + size * 2.5);
+      ctx.moveTo(finalX - size * 2.5, finalY);
+      ctx.lineTo(finalX + size * 2.5, finalY);
+      ctx.moveTo(finalX, finalY - size * 2.5);
+      ctx.lineTo(finalX, finalY + size * 2.5);
       ctx.stroke();
     }
 
     // --- 画飘雪 ---
     ctx.fillStyle = '#ffffff';
     for (const s of snowParticles) {
-      s.y += s.speed; // 永远向下
+      s.y += s.speed; 
       s.swing += 0.02;
       
       if (s.y > H) { 
