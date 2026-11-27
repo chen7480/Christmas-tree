@@ -166,13 +166,13 @@
       });
     }
 
-    // 4. 飘雪
+    // 4. 飘雪 (修正为向下)
     for (let i = 0; i < SNOW_COUNT; i++) {
       snowParticles.push({
         x: (Math.random() - 0.5) * 2,
         y: Math.random() * 2,
         size: 0.8 + Math.random() * 1.5,
-        speed: 0.001 + Math.random() * 0.003, 
+        speed: 0.002 + Math.random() * 0.005, 
         swing: Math.random() * Math.PI * 2
       });
     }
@@ -234,7 +234,6 @@
     
     return {
       sx: W / 2 + x1 * baseScale * persp,
-      // 【修复】这里改为了加号，确保树在屏幕垂直居中的正常区域
       sy: H * 0.55 - y2 * baseScale * persp, 
       depth: z2,
       scale: persp
@@ -246,7 +245,8 @@
   function frame(ts) {
     time = ts * 0.001;
     
-    if (!dragging) targetRotY += 0.003;
+    // 稳定自转
+    if (!dragging) targetRotY += 0.002;
     rotY += (targetRotY - rotY) * 0.1;
     rotX += (targetRotX - rotX) * 0.1;
     zoom += (targetZoom - zoom) * 0.1;
@@ -257,7 +257,7 @@
     const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
     const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
 
-    // 星云
+    // 底部星云
     for (const p of groundParticles) {
       const pr = project(p.x, p.y, p.z, cosY, sinY, cosX, sinX);
       const twinkle = 0.5 + 0.5 * Math.sin(time * p.twinkleSpeed + p.phase);
@@ -294,7 +294,7 @@
       ctx.fill();
     }
 
-    // 星星
+    // 树顶星星
     {
       const pr = project(0, TREE_HEIGHT / 2 + TRUNK_HEIGHT + 0.1, 0, cosY, sinY, cosX, sinX);
       const pulse = 0.8 + 0.2 * Math.sin(time * 3);
@@ -320,14 +320,15 @@
       ctx.stroke();
     }
 
-    // 飘雪
+    // 飘雪 (修正：向下落)
     ctx.fillStyle = '#ffffff';
     for (const s of snowParticles) {
-      s.y -= s.speed; 
+      s.y -= s.speed; // 减去速度，向下落
       s.swing += 0.02;
       const sx = W / 2 + (s.x + Math.sin(s.swing) * 0.1) * W;
       const sy = s.y * H;
       
+      // 落到底部后，回到顶部
       if (s.y < 0) s.y = 1;
       
       ctx.globalAlpha = s.size * 0.3;
