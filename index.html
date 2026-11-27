@@ -21,23 +21,35 @@
   }
   .text-container {
     position: fixed;
-    top: 15%;
+    top: 12%;
     left: 10%;
     pointer-events: none;
     z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
   }
-  .title {
-    color: #e0e0e0;
-    font-size: clamp(24px, 5vw, 40px);
+  .title-line1 {
+    color: #fce4ec;
+    font-size: clamp(20px, 4.5vw, 32px);
     font-style: italic;
-    letter-spacing: 0.05em;
-    text-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+    letter-spacing: 0.08em;
+    text-shadow: 0 0 15px rgba(255, 105, 180, 0.6);
+  }
+  .title-line2 {
+    color: #fce4ec;
+    font-size: clamp(24px, 5.5vw, 40px);
+    font-style: italic;
+    letter-spacing: 0.1em;
+    text-shadow: 0 0 20px rgba(255, 105, 180, 0.8);
+    padding-left: 20px; /* 让名字稍微缩进一点，更有设计感 */
   }
 </style>
 </head>
 <body>
   <div class="text-container">
-    <div class="title">Merry Christmas</div>
+    <div class="title-line1">Merry Christmas</div>
+    <div class="title-line2">Xuan</div>
   </div>
   <canvas id="c"></canvas>
 
@@ -60,7 +72,6 @@
   }
   window.addEventListener('resize', resize);
 
-  // 状态变量
   let rotX = 0.2; 
   let rotY = 0;
   let targetRotX = 0.2;
@@ -87,24 +98,26 @@
     groundParticles = [];
     snowParticles = [];
 
-    // 1. 树身粒子
+    // 1. 树身粒子 (完美正立)
     for (let i = 0; i < TREE_COUNT; i++) {
       const t = Math.pow(Math.random(), 0.8);
-      const y = TREE_HEIGHT / 2 - t * TREE_HEIGHT;
+      const y = -TREE_HEIGHT / 2 + t * TREE_HEIGHT;
       const maxR = TREE_RADIUS * (1 - t);
       
       const spiralAngle = t * Math.PI * 22; 
       const angle = spiralAngle + (Math.random() - 0.5) * 2;
-      const r = maxR * Math.random(); // 内部也有粒子，更饱满
+      const r = maxR * Math.random();
       
       const x = Math.cos(angle) * r;
       const z = Math.sin(angle) * r;
 
-      // 颜色：冷白、微蓝
+      // 高级冷调粉色
       let color;
-      if (Math.random() > 0.8) color = [255, 255, 255]; 
-      else if (Math.random() > 0.5) color = [180, 200, 255]; 
-      else color = [120, 140, 200]; 
+      const rand = Math.random();
+      if (rand > 0.9) color = [255, 255, 255]; 
+      else if (rand > 0.6) color = [255, 182, 193]; 
+      else if (rand > 0.3) color = [255, 105, 180]; 
+      else color = [219, 112, 147]; 
 
       treeParticles.push({
         x, y, z,
@@ -127,14 +140,14 @@
       groundParticles.push({
         x, y, z,
         size: 0.5 + Math.random() * 1.2,
-        color: [100 + Math.random()*50, 110 + Math.random()*50, 150 + Math.random()*50],
+        color: [200 + Math.random()*55, 100 + Math.random()*80, 150 + Math.random()*80],
         alpha: 0.2 + Math.random() * 0.6,
         twinkleSpeed: 0.5 + Math.random(),
         phase: Math.random() * Math.PI * 2
       });
     }
 
-    // 3. 背景雪花
+    // 3. 飘雪
     for (let i = 0; i < SNOW_COUNT; i++) {
       snowParticles.push({
         x: (Math.random() - 0.5) * 2,
@@ -146,7 +159,6 @@
     }
   }
 
-  // 交互
   function pointerDown(e) {
     dragging = true;
     lastX = e.clientX;
@@ -160,7 +172,6 @@
     lastY = e.clientY;
     targetRotY += dx * 0.01;
     targetRotX += dy * 0.01;
-    // 限制X轴翻转不超过180度防止倒过来看着晕
     targetRotX = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, targetRotX));
   }
   function pointerUp() { dragging = false; }
@@ -192,21 +203,18 @@
   }, { passive: true });
   canvas.addEventListener('touchend', () => { pinchDist = null; }, { passive: true });
 
-  // 安全的3D投影
   function project(x, y, z, cosY, sinY, cosX, sinX) {
     let x1 = x * cosY - z * sinY;
     let z1 = x * sinY + z * cosY;
     let y2 = y * cosX - z1 * sinX;
     let z2 = y * sinX + z1 * cosX;
 
-    // 这里用最稳妥的缩放法，绝对不会除以0
     const baseScale = Math.min(W, H) * 0.5 * zoom;
-    // 伪透视：根据深度稍微缩放一点
     const persp = 1 - z2 * 0.3; 
     
     return {
       sx: W / 2 + x1 * baseScale * persp,
-      sy: H * 0.6 - y2 * baseScale * persp,
+      sy: H * 0.55 - y2 * baseScale * persp, 
       depth: z2,
       scale: persp
     };
@@ -217,7 +225,7 @@
   function frame(ts) {
     time = ts * 0.001;
     
-    if (!dragging) targetRotY += 0.003; // 自动旋转
+    if (!dragging) targetRotY += 0.003;
     rotY += (targetRotY - rotY) * 0.1;
     rotX += (targetRotX - rotX) * 0.1;
     zoom += (targetZoom - zoom) * 0.1;
@@ -228,7 +236,6 @@
     const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
     const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
 
-    // 底部星云
     for (const p of groundParticles) {
       const pr = project(p.x, p.y, p.z, cosY, sinY, cosX, sinX);
       const twinkle = 0.5 + 0.5 * Math.sin(time * p.twinkleSpeed + p.phase);
@@ -239,7 +246,6 @@
       ctx.fill();
     }
 
-    // 树身
     const sortedTree = treeParticles.map(p => {
       return { p, pr: project(p.x, p.y, p.z, cosY, sinY, cosX, sinX) };
     }).sort((a, b) => a.pr.depth - b.pr.depth);
@@ -249,7 +255,7 @@
       const alpha = p.alpha * twinkle;
       const rad = p.size * pr.scale;
 
-      if (p.color[0] === 255) {
+      if (p.color[0] === 255 && p.color[1] === 255) {
         const grad = ctx.createRadialGradient(pr.sx, pr.sy, 0, pr.sx, pr.sy, rad * 3);
         grad.addColorStop(0, `rgba(255,255,255,${alpha})`);
         grad.addColorStop(1, `rgba(255,255,255,0)`);
@@ -265,7 +271,6 @@
       ctx.fill();
     }
 
-    // 树顶星星
     {
       const pr = project(0, TREE_HEIGHT / 2 + 0.1, 0, cosY, sinY, cosX, sinX);
       const pulse = 0.8 + 0.2 * Math.sin(time * 3);
@@ -273,8 +278,8 @@
       
       const grad = ctx.createRadialGradient(pr.sx, pr.sy, 0, pr.sx, pr.sy, size * 4);
       grad.addColorStop(0, 'rgba(255,255,255,1)');
-      grad.addColorStop(0.2, 'rgba(200,220,255,0.6)');
-      grad.addColorStop(1, 'rgba(150,180,255,0)');
+      grad.addColorStop(0.2, 'rgba(255,182,193,0.6)');
+      grad.addColorStop(1, 'rgba(255,105,180,0)');
       
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -291,7 +296,6 @@
       ctx.stroke();
     }
 
-    // 飘雪
     ctx.fillStyle = '#ffffff';
     for (const s of snowParticles) {
       s.y -= s.speed;
